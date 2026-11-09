@@ -6,7 +6,8 @@
 
 This fork adds simultaneous local co-op to Donkey Kong Country: two players
 control Donkey and Diddy at the same time, with an independent camera and view
-for each Kong. Donkey's view is on top and Diddy's is below. Both views share
+for each Kong. Donkey's view is on the left and Diddy's is on the right (set
+`DKC1_COOP_LAYOUT=stacked` for the original top/bottom layout). Both views share
 one game simulation; pickups, enemies and level progress are shared.
 
 Enable **Mods > Simultaneous co-op** in the desktop host and configure both

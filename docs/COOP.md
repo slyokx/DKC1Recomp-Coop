@@ -1,7 +1,10 @@
 # Simultaneous co-op
 
-Enable **Mods > Simultaneous co-op** in the desktop host. The upper view
-belongs to Donkey and the lower view to Diddy. Both use the native game
+Enable **Mods > Simultaneous co-op** in the desktop host. By default the
+left view belongs to Donkey and the right view to Diddy (side by side, which
+uses wide monitors well). Set the environment variable
+`DKC1_COOP_LAYOUT=stacked` before launching to restore the original layout
+with Donkey on top and Diddy below. Both use the native game
 controllers, with per-player camera, object and graphics ownership. Menus
 and some scripted scenes share the native picture. The setting is remembered;
 loading a save state does not enable the mode automatically.
@@ -12,7 +15,8 @@ and their keyboard. With two gamepads, they are assigned in connection order.
 Player 2 defaults to I/J/K/L for directions, N for B, M for A and G for Y;
 the other bindings are configurable. Existing nonempty custom maps are kept.
 
-The two 224-line views form a 448-line image. Custom source widths above
+Side by side, the two views form a (2 x width) x 224 image; stacked, the two
+224-line views form a width x 448 image. Custom source widths above
 342 pixels use the primary image, preserving the existing mobile width API
 and the co-op save format. Windowed and fullscreen
 presentation preserve its aspect ratio and fit it to the available desktop.

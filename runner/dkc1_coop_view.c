@@ -1425,8 +1425,23 @@ static void FadeRow(uint8_t *out, const uint8_t *in, size_t bytes, unsigned age)
   }
 }
 
+/* Co-op presentation layout. Side by side places Donkey on the left and Diddy
+ * on the right (2*width x 224); stacked keeps the original width x 448 image.
+ * Library default stays stacked so existing callers and tests are unchanged;
+ * the desktop host opts in to side by side at startup. */
+static int s_side_by_side;
+void Dkc1CoopViewSetSideBySide(int enabled) { s_side_by_side = enabled ? 1 : 0; }
+int Dkc1CoopViewSideBySide(void) { return s_side_by_side; }
+
+static int CoopPresented(void) {
+  return Dkc1CoopEnabled() && Dkc1VideoWidth() <= kMaxWidth;
+}
 int Dkc1PresentationHeight(void) {
-  return Dkc1CoopEnabled() && Dkc1VideoWidth() <= kMaxWidth ? 448 : 224;
+  return CoopPresented() && !s_side_by_side ? 448 : 224;
+}
+int Dkc1PresentationWidth(void) {
+  return CoopPresented() && s_side_by_side ? 2 * Dkc1VideoWidth()
+                                           : Dkc1VideoWidth();
 }
 const uint8_t *Dkc1PresentationPixels(const uint8_t *primary, size_t pitch) {
   if (!primary || Dkc1VideoWidth() > kMaxWidth || !Dkc1CoopEntitiesActive()) return primary;
@@ -1435,24 +1450,30 @@ const uint8_t *Dkc1PresentationPixels(const uint8_t *primary, size_t pitch) {
     Dkc1CoopViewDraw();
   }
   size_t row = (size_t)Dkc1VideoWidth() * 4;
+  /* Stacked: Donkey row y, Diddy row y+kHeight, each `row` bytes wide.
+   * Side by side: one 2*row-byte scanline, Donkey then Diddy. */
+  const size_t out_pitch = s_side_by_side ? row * 2 : row;
+  const size_t diddy_step = s_side_by_side ? row : row * kHeight;
   for (int y = 0; y < kHeight; y++) {
+    uint8_t *donkey_out = s_composite + out_pitch * y;
+    uint8_t *diddy_out = donkey_out + diddy_step;
     /* A dead player's view stays black; a failed primary render still has
      * the native image as its fallback. These are different outcomes. */
     if (s_projection_seat == 1)
-      memset(s_composite + row * y, 0, row);
+      memset(donkey_out, 0, row);
     else if (s_hidden & 1)
-      FadeRow(s_composite + row * y, s_upper + row * y, row, s_fade.fade[0]);
-    else memcpy(s_composite + row * y,
+      FadeRow(donkey_out, s_upper + row * y, row, s_fade.fade[0]);
+    else memcpy(donkey_out,
            (s_ready & 1) && s_width == Dkc1VideoWidth() ? s_upper + row * y :
                                                    primary + pitch * y, row);
     if (s_projection_seat == 0)
-      memset(s_composite + row * (y + kHeight), 0, row);
+      memset(diddy_out, 0, row);
     else if (s_hidden & 2)
-      FadeRow(s_composite + row * (y + kHeight), s_lower + row * y, row, s_fade.fade[1]);
+      FadeRow(diddy_out, s_lower + row * y, row, s_fade.fade[1]);
     else if ((s_ready & 2) && s_width == Dkc1VideoWidth())
-      memcpy(s_composite + row * (y + kHeight), s_lower + row * y, row);
+      memcpy(diddy_out, s_lower + row * y, row);
     else
-      memset(s_composite + row * (y + kHeight), 0, row);
+      memset(diddy_out, 0, row);
   }
   return s_composite;
 }

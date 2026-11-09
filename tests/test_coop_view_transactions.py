@@ -744,6 +744,41 @@ int main(void) {
 }
 ''')
 
+    def test_side_by_side_layout_puts_donkey_left_and_diddy_right(self):
+        source = (ROOT / 'runner/dkc1_coop_view.c').read_text()
+        draw = 'typedef struct CoopViewPlan {' + source.split('typedef struct CoopViewPlan {', 1)[1]
+        support = VIEW_SUPPORT.replace('return view==0;', 'return 1;')
+        test_coop_mod.CoopModTests().compile_harness('#include "dkc1_coop_oam.h"\n' + support + draw + r'''
+int main(void) {
+  uint8_t primary[8*224]={0};
+  /* Library default is the original stack: width x 448. */
+  assert(!Dkc1CoopViewSideBySide());
+  Dkc1CoopViewDraw();
+  assert(Dkc1PresentationWidth()==2 && Dkc1PresentationHeight()==448);
+  const uint8_t *p=Dkc1PresentationPixels(primary,8);
+  assert(p[0]==0x33 && p[8*224]==0x55);
+  /* Side by side: two source-width panes per 224-line scanline. */
+  Dkc1CoopViewSetSideBySide(1);
+  assert(Dkc1CoopViewSideBySide());
+  assert(Dkc1PresentationWidth()==4 && Dkc1PresentationHeight()==224);
+  p=Dkc1PresentationPixels(primary,8);
+  for(int y=0;y<224;y++) {
+    const uint8_t *line=p+(size_t)16*y;      /* 2 panes * 2 px * 4 bytes */
+    assert(line[0]==0x33 && line[7]==0x33);  /* Donkey on the left  */
+    assert(line[8]==0x55 && line[15]==0x55); /* Diddy on the right  */
+  }
+  /* A dead Donkey fades only the left pane and leaves Diddy untouched. */
+  alive[0]=0; snes_frame_counter=1; Dkc1CoopViewDraw();
+  p=Dkc1PresentationPixels(primary,8);
+  assert(p[0]==0x33*29/30); assert(p[8]==0x55);
+  assert(p[16]==0x33*29/30); assert(p[24]==0x55); /* second scanline */
+  /* Back to stacked at runtime. */
+  Dkc1CoopViewSetSideBySide(0);
+  assert(Dkc1PresentationWidth()==2 && Dkc1PresentationHeight()==448);
+  return 0;
+}
+''')
+
     def test_final_fall_waits_for_native_balloon_countdown_on_native_camera(self):
         source = (ROOT / 'runner/dkc1_coop_view.c').read_text()
         draw = 'typedef struct CoopViewPlan {' + source.split('typedef struct CoopViewPlan {', 1)[1]

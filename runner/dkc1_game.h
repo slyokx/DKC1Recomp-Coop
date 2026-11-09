@@ -9,8 +9,15 @@ const RtlGameInfo *Dkc1GameInfo(void);
 void Dkc1BeginDrawing(uint8_t *pixels, size_t pitch);
 void Dkc1DrawPpuFrame(void);
 /* Display composition is separate from the cartridge's 224-line framebuffer.
- * The returned pixels are packed at Dkc1VideoWidth()*4 bytes per row. */
+ * The returned pixels are packed at Dkc1PresentationWidth()*4 bytes per row
+ * and Dkc1PresentationHeight() rows. Co-op is either side by side
+ * (2*Dkc1VideoWidth() x 224) or stacked (Dkc1VideoWidth() x 448). */
 int Dkc1PresentationHeight(void);
+int Dkc1PresentationWidth(void);
+/* Select the co-op layout: nonzero = side by side (Donkey left, Diddy right),
+ * zero = stacked. Presentation only; never serialized or seen by the game. */
+void Dkc1CoopViewSetSideBySide(int enabled);
+int Dkc1CoopViewSideBySide(void);
 const uint8_t *Dkc1PresentationPixels(const uint8_t *primary, size_t pitch);
 void Dkc1InvalidatePresentation(void);
 uint32_t Dkc1ResumePc(void);

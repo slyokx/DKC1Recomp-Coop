@@ -217,6 +217,7 @@ static void OpenPauseMenu(int graphics_page);
 
 static int s_width;
 static int s_presentation_height;
+static int s_presentation_width; /* buffer width: 2*s_width for side-by-side co-op */
 static int s_presentation_output_width;
 static int s_presentation_output_height;
 static int s_renderer_vsync;
@@ -908,9 +909,16 @@ static void PrepareUserDirectory(void) {
 }
 
 static int PresentationWidth(void) {
-  return (s_width * kSnesPixelAspectNumerator +
+  return (s_presentation_width * kSnesPixelAspectNumerator +
           kSnesPixelAspectDenominator / 2) /
          kSnesPixelAspectDenominator;
+}
+
+/* True when the co-op composite is shown (stacked or side by side): the
+ * image is then larger than one frame and may need fractional scaling. */
+static int CoopPresentation(void) {
+  return s_presentation_height > kDkc1VideoHeight ||
+         s_presentation_width > s_width;
 }
 
 static void ApplyPresentationGeometry(void) {
@@ -954,7 +962,7 @@ static void ApplyPresentationGeometry(void) {
   int window_width, window_height;
   SDL_GetWindowSize(s_window, &window_width, &window_height);
   SDL_RenderSetIntegerScale(
-      s_renderer, s_presentation_height > kDkc1VideoHeight &&
+      s_renderer, CoopPresentation() &&
                           (window_width < PresentationWidth() ||
                            window_height < s_presentation_height)
                       ? SDL_FALSE : SDL_TRUE);
@@ -965,7 +973,7 @@ static void ApplyWindowedSize(void) {
   int height = s_presentation_height * s_graphics.window_scale;
   SDL_Rect usable;
   int top = 0, left = 0, bottom = 0, right = 0;
-  const int fit_coop = s_presentation_height > kDkc1VideoHeight &&
+  const int fit_coop = CoopPresentation() &&
       SDL_GetDisplayUsableBounds(SDL_GetWindowDisplayIndex(s_window),
                                 &usable) == 0;
   if (fit_coop) {
@@ -1006,11 +1014,13 @@ static void ApplyWindowedSize(void) {
 
 static int UpdatePresentationSize(void) {
   const int height = Dkc1PresentationHeight();
-  if (height == s_presentation_height) return 1;
+  const int width = Dkc1PresentationWidth();
+  if (height == s_presentation_height && width == s_presentation_width)
+    return 1;
 #ifndef _WIN32
   SDL_Texture *texture = SDL_CreateTexture(
       s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-      s_width, height);
+      width, height);
   if (!texture) {
     snprintf(s_status, sizeof s_status, "view resize failed: %.180s",
              SDL_GetError());
@@ -1021,6 +1031,7 @@ static int UpdatePresentationSize(void) {
   s_texture = texture;
 #endif
   s_presentation_height = height;
+  s_presentation_width = width;
   if (s_fullscreen)
     ApplyPresentationGeometry();
   else
@@ -1030,6 +1041,7 @@ static int UpdatePresentationSize(void) {
 
 static bool InitVideo(void) {
   s_presentation_height = Dkc1PresentationHeight();
+  s_presentation_width = Dkc1PresentationWidth();
   const int window_width = PresentationWidth() * s_graphics.window_scale;
   const int window_height = s_presentation_height * s_graphics.window_scale;
   s_window = SDL_CreateWindow(
@@ -1087,8 +1099,8 @@ static bool InitVideo(void) {
   }
 
   s_texture = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888,
-                                SDL_TEXTUREACCESS_STREAMING, s_width,
-                                s_presentation_height);
+                                SDL_TEXTUREACCESS_STREAMING,
+                                s_presentation_width, s_presentation_height);
   if (!s_texture)
     return false;
   SDL_SetTextureBlendMode(s_texture, SDL_BLENDMODE_NONE);
@@ -1161,10 +1173,10 @@ static void PreparePresentation(void) {
   if (!UpdatePresentationSize()) return;
   const uint8_t *pixels = Dkc1PresentationPixels(s_pixels, (size_t)s_width * 4);
   const uint8_t *display=Dkc1DesktopColorFilterApply(&s_color_filter,pixels,
-      s_display_pixels,(size_t)s_width*s_presentation_height);
+      s_display_pixels,(size_t)s_presentation_width*s_presentation_height);
   if (!display) display=pixels;
 #ifdef _WIN32
-  Dkc1WindowsGraphicsDraw((const uint32_t *)display,s_width,s_presentation_height,
+  Dkc1WindowsGraphicsDraw((const uint32_t *)display,s_presentation_width,s_presentation_height,
                          PresentationWidth(),&s_graphics);
   return;
 #endif
@@ -1179,7 +1191,7 @@ static void PreparePresentation(void) {
       info.bg_vscroll[layer] = g_ppu->vScroll[layer];
     }
     Dkc1MacMetalPresenterQueueFrame(
-        (const uint32_t *)display, s_width, s_presentation_height,
+        (const uint32_t *)display, s_presentation_width, s_presentation_height,
         PresentationWidth(), &info);
     return;
   }
@@ -1210,7 +1222,7 @@ static void PreparePresentation(void) {
       destination_ptr = &destination;
     }
   }
-  SDL_UpdateTexture(s_texture, NULL, display, s_width * 4);
+  SDL_UpdateTexture(s_texture, NULL, display, s_presentation_width * 4);
   SDL_RenderClear(s_renderer);
   SDL_RenderCopy(s_renderer, s_texture, NULL, destination_ptr);
 }
@@ -1755,10 +1767,12 @@ static void SetAspectMode(Dkc1VideoAspect requested) {
   const int old_width = s_width;
   Dkc1VideoSetAspect(requested);
   const int new_width = Dkc1VideoWidth();
+  /* Side-by-side co-op presents two source-width panes per scanline. */
+  const int new_presentation_width = Dkc1PresentationWidth();
 #ifndef _WIN32
   SDL_Texture *new_texture = SDL_CreateTexture(
       s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-      new_width, s_presentation_height);
+      new_presentation_width, s_presentation_height);
   if (!new_texture) {
     Dkc1VideoSetAspect(old_aspect);
     snprintf(s_status, sizeof s_status, "aspect change failed: %.180s",
@@ -1788,6 +1802,7 @@ static void SetAspectMode(Dkc1VideoAspect requested) {
   s_texture = new_texture;
 #endif
   s_width = new_width;
+  s_presentation_width = new_presentation_width;
   s_graphics.aspect=requested; Dkc1MacSaveGraphics(&s_graphics);
   Dkc1BeginDrawing(s_pixels, (size_t)s_width * 4);
   ApplyPresentationGeometry();
@@ -2207,7 +2222,7 @@ static void PollEvents(void) {
         /* The SDL fallback must switch to fractional scaling when a resized
          * window cannot fit the 448-line stack, and back when it can. */
         if (s_renderer && !s_metal_presenter_active && !s_fullscreen &&
-            s_presentation_height > kDkc1VideoHeight &&
+            CoopPresentation() &&
             (event.window.event == SDL_WINDOWEVENT_RESIZED ||
              event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED))
           ApplyPresentationGeometry();
@@ -2465,6 +2480,15 @@ int main(int argc, char **argv) {
       if (end && !*end && frames > 0)
         s_smoke_test_frames = frames;
     }
+  }
+  {
+    /* Co-op shows Donkey on the left and Diddy on the right by default, which
+     * uses wide desktops far better than a tall stack. DKC1_COOP_LAYOUT=stacked
+     * restores the original top/bottom arrangement. */
+    const char *layout = getenv("DKC1_COOP_LAYOUT");
+    Dkc1CoopViewSetSideBySide(
+        !(layout && (strcmp(layout, "stacked") == 0 ||
+                     strcmp(layout, "vertical") == 0)));
   }
   s_width = Dkc1VideoWidth();
   Dkc1BeginDrawing(s_pixels, (size_t)s_width * 4);
